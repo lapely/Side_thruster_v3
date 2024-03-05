@@ -33,6 +33,10 @@ double priError = 0;
 double toError = 0;
 float pid;
 
+// Lowpass
+double filteredDataOld;  // Replace with the initial value of previously filtered data
+double positionFiltered;
+
 // ESC
 Servo ESC[4]; // create servo object to control the ESC
 int* pwm; // Array of pwms
@@ -79,9 +83,9 @@ VL53L4CD_Result_t getPosition(){
 }
 
 // Function that calculate PID (in Newton needed to accelerate the drone toward setpoint)
-float PID(int dis) {
+float PID(float dis) {
   float disM = (float)dis/1000;
-  double error = setP - disM;
+  double error = setP - disM; 
   float PIDvalue = 0;
 
   double Pvalue = error * kp;
@@ -102,7 +106,7 @@ float PID(int dis) {
     toError += error;
   }
 
-  if (abs(error) > deadzone){
+  if (fabs(error) > deadzone){
     PIDvalue = Pvalue + Ivalue + Dvalue;
   }else{
     PIDvalue = 0;
@@ -123,26 +127,27 @@ int* pidToPwm(float pid) {
   int* result = new int[4];
   int pwm = minPwm;
 
-  if (fabs(pid) < 0.0882){
-    pwm = (200 * (8225 + 2 * sqrt(-1685 + 936875 * fabs(pid/9.8)))) / 1499;
+  if (fabs(pid) > 0.52){
+    float rpm = (50.0 / 149.0) * (833.0 + std::sqrt(-15338511.0 + 59600000.0 * (fabs(pid))/2)); // Correspond to the curve of our motor thrust in function of RPM
+    pwm = 0.0451*rpm + 986; // Correspond to the curve of our motor PWM in function of RPM
   }
   
-  if (pid > 0 && pwm > minPwm && pwm < maxPwm){
+  if (pid < 0 && pwm > minPwm && pwm < maxPwm){
     result[0] = pwm;
     result[1] = minPwm;
     result[2] = minPwm;
     result[3] = pwm;
-  } else if (pid < 0 && pwm > minPwm & pwm < maxPwm){
+  } else if (pid > 0 && pwm > minPwm & pwm < maxPwm){
     result[0] = minPwm;
     result[1] = pwm;
     result[2] = pwm;
     result[3] = minPwm;
-  }else if (pid < 0 && pwm > minPwm & pwm > maxPwm){
+  }else if (pid > 0 && pwm > minPwm & pwm > maxPwm){
     result[0] = minPwm;
     result[1] = maxPwm;
     result[2] = maxPwm;
     result[3] = minPwm;
-  }else if (pid > 0 && pwm > minPwm && pwm > maxPwm){
+  }else if (pid < 0 && pwm > minPwm && pwm > maxPwm){
     result[0] = maxPwm;
     result[1] = minPwm;
     result[2] = minPwm;
@@ -154,7 +159,6 @@ int* pidToPwm(float pid) {
     result[3] = minPwm;
   }
   
-
   return result;
 
 }
@@ -164,7 +168,7 @@ int* pidToPwm(float pid) {
 void logData(){
   Serial.print(millis());
   Serial.print(",");
-  Serial.print(position.distance_mm-setP*10);
+  Serial.print((float)positionFiltered/1000-setP);
   Serial.print(",");
   Serial.print(pid);
   Serial.print(",");
@@ -204,6 +208,15 @@ void logHeader(){
   Serial.print(",");
   Serial.println(0);
   Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)");
+}
+
+// Lowpass filter
+double lowpass(double dataInput, double fcut, double filteredDataOld, double dt) {
+
+    double alpha = dt / (1.0 / fcut + dt); // calculate alpha
+    double filteredData = (1 - alpha) * filteredDataOld + dataInput * alpha; // update value
+
+    return filteredData;
 }
 
 void setup() {
@@ -263,8 +276,7 @@ void setup() {
   timerAlarmWrite(mainTimer, 10000, true); // Set timer to 1 / 10 000 micro seconds (100 Hz). If prescaler change, this will change too
   timerAlarmEnable(mainTimer);
 
-  //position = getPosition();
-  //setP = (position.distance_mm/10;
+  //setP = (float)getPosition().distance_mm/1000;
 }
 
 void loop() {
@@ -274,10 +286,12 @@ void loop() {
       mainStatus = 0;
 
       position = getPosition();
+      positionFiltered = lowpass((double)position.distance_mm, fcut, filteredDataOld, dt);
+      filteredDataOld = positionFiltered;
 
       if (position.range_status == 0){ // Make sure the position sensor see the drone
         getAccelerometer(); // Gather accelerometer data
-        pid = PID(position.distance_mm); // Calculate PID
+        pid = PID(positionFiltered); // Calculate PID
         pwm = pidToPwm(pid); // Convert PID to motor commands
 
         // Send motor commands to ESC
@@ -299,5 +313,4 @@ void loop() {
       ESC[i].write(0);
     }
   }
-  
 }
