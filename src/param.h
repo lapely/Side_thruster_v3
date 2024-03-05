@@ -15,9 +15,15 @@ float kd = 1; // D gain
 
 float setP = 0.4; // Setpoint (distance from position sensor in m)
 
+<<<<<<< HEAD
 // lowpass
 double fcut = 20;        // Replace with actual filter cutoff frequency (rad/s)
 double dt = 0.01;        // Replace with actual data timestep
+=======
+// Low pass filter
+
+double fcut = 15;
+>>>>>>> a804ec97778fe7b3e984692215b7b53575aaa41d
 
 // ESC
 const int ESCpin[4] = {15, 33, 27, 12}; // pin for each ESC {ESC1, ESC2, ESC3, ESC4}

@@ -33,10 +33,6 @@ double priError = 0;
 double toError = 0;
 float pid;
 
-// Lowpass
-double filteredDataOld;  // Replace with the initial value of previously filtered data
-double positionFiltered;
-
 // ESC
 Servo ESC[4]; // create servo object to control the ESC
 int* pwm; // Array of pwms
@@ -83,7 +79,7 @@ VL53L4CD_Result_t getPosition(){
 }
 
 // Function that calculate PID (in Newton needed to accelerate the drone toward setpoint)
-float PID(float dis) {
+float PID(int dis) {
   float disM = (float)dis/1000;
   double error = setP - disM; 
   float PIDvalue = 0;
@@ -123,13 +119,25 @@ float PID(float dis) {
   return PIDvalue;
 }
 
+double lowpass(double dataInput, double fcut, double filteredDataOld, double dt) {
+    // Apply first order lowpass filter
+    // dataInput: data to be filtered
+    // fcut: Filter cutoff frequency (rad/s)
+    // filteredDataOld: Previously filtered data
+    // dt: data timestep (s)
+
+    double alpha = dt / (1.0 / fcut + dt); // calculate alpha
+    double filteredData = (1 - alpha) * filteredDataOld + dataInput * alpha; // update value
+
+    return filteredData;
+}
+
 int* pidToPwm(float pid) {
   int* result = new int[4];
   int pwm = minPwm;
 
-  if (fabs(pid) > 0.52){
-    float rpm = (50.0 / 149.0) * (833.0 + std::sqrt(-15338511.0 + 59600000.0 * (fabs(pid))/2)); // Correspond to the curve of our motor thrust in function of RPM
-    pwm = 0.0451*rpm + 986; // Correspond to the curve of our motor PWM in function of RPM
+  if (fabs(pid) < 0.0882){
+    pwm = (200 * (8225 + 2 * sqrt(-1685 + 936875 * fabs(pid/9.8)))) / 1499;
   }
   
   if (pid < 0 && pwm > minPwm && pwm < maxPwm){
@@ -168,7 +176,7 @@ int* pidToPwm(float pid) {
 void logData(){
   Serial.print(millis());
   Serial.print(",");
-  Serial.print((float)positionFiltered/1000-setP);
+  Serial.print(position.distance_mm-setP*10);
   Serial.print(",");
   Serial.print(pid);
   Serial.print(",");
@@ -207,7 +215,7 @@ void logHeader(){
   Serial.print(0);
   Serial.print(",");
   Serial.println(0);
-  Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)");
+  //Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)"); // ! As of rn, it breaks log analysis
 }
 
 // Lowpass filter
@@ -223,7 +231,6 @@ void setup() {
   // Initialize serial for output.
   Serial.begin(115200);
   logHeader(); // log p-i-d gains and column title
-  
 
   // Kill switch
   pinMode(killSwitchPin, INPUT);
@@ -291,7 +298,7 @@ void loop() {
 
       if (position.range_status == 0){ // Make sure the position sensor see the drone
         getAccelerometer(); // Gather accelerometer data
-        pid = PID(positionFiltered); // Calculate PID
+        pid = PID(position.distance_mm); // Calculate PID
         pwm = pidToPwm(pid); // Convert PID to motor commands
 
         // Send motor commands to ESC
