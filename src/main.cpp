@@ -18,9 +18,9 @@
 using namespace std; 
 
 // Parameters (not user choice)
-#define DEV_I2C Wire
 
 // Distance sensor
+#define DEV_I2C Wire
 VL53L4CD sensor_vl53l4cd_sat(&DEV_I2C, A1);
 VL53L4CD_Result_t position;
 uint8_t posStatus; // is 0 if position senser see something
@@ -123,6 +123,7 @@ float PID(float dis) {
   return PIDvalue;
 }
 
+// Function that convert the PID (force) in motor command (PWM) that produces that force
 int* pidToPwm(float pid) {
   int* result = new int[4];
   int pwm = minPwm;
@@ -163,8 +164,7 @@ int* pidToPwm(float pid) {
 
 }
 
-
-// Function that print all relevent data in the serial monitor
+// Functions that print all relevent data in the serial monitor
 void logData(){
   Serial.print(millis());
   Serial.print(",");
@@ -220,32 +220,17 @@ double lowpass(double dataInput, double fcut, double filteredDataOld, double dt)
 }
 
 void setup() {
-  // Initialize serial for output.
   Serial.begin(115200);
-  logHeader(); // log p-i-d gains and column title
-  
 
-  // Kill switch
-  pinMode(killSwitchPin, INPUT);
-
-  // Initialize I2C bus.
-  DEV_I2C.begin();
+  // log p-i-d gains
+  logHeader();
 
   // Distance sensor settup
-  // Configure VL53L4CD satellite component.
+  DEV_I2C.begin();
   sensor_vl53l4cd_sat.begin();
-
-  // Switch off VL53L4CD satellite component.
   sensor_vl53l4cd_sat.VL53L4CD_Off();
-
-  //Initialize VL53L4CD satellite component.
   sensor_vl53l4cd_sat.InitSensor();
-
-  // Program the highest possible TimingBudget, without enabling the
-  // low power mode. This should give the best accuracy
-  sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(10, 0);
-
-  // Start Measurements
+  sensor_vl53l4cd_sat.VL53L4CD_SetRangeTiming(10, 0); // Program the highest possible TimingBudget
   sensor_vl53l4cd_sat.VL53L4CD_StartRanging();
 
   // Accelerometer setup
@@ -255,8 +240,7 @@ void setup() {
     }
   }
 
-  // Accelerometer and gyro range and frequency configuration (See doc for choices)
-  sox.setAccelRange(LSM6DS_ACCEL_RANGE_2_G);
+  sox.setAccelRange(LSM6DS_ACCEL_RANGE_2_G); // Accelerometer and gyro range and frequency configuration (See doc for choices)
   sox.setGyroRange(LSM6DS_GYRO_RANGE_250_DPS );
   sox.setAccelDataRate(LSM6DS_RATE_416_HZ);
   sox.setGyroDataRate(LSM6DS_RATE_416_HZ);
@@ -276,41 +260,38 @@ void setup() {
   timerAlarmWrite(mainTimer, 10000, true); // Set timer to 1 / 10 000 micro seconds (100 Hz). If prescaler change, this will change too
   timerAlarmEnable(mainTimer);
 
-  //setP = (float)getPosition().distance_mm/1000;
+  // Setpoint
+  if (setP == 0){ // If setP is 0, set setP to initial position
+    setP = (float)getPosition().distance_mm/1000;
+  }
 }
 
 void loop() {
-  if(digitalRead(killSwitchPin) == 0 || killSwitchPin == 0){
-    if(mainStatus == 1){ // Trigger loop at time interrupt
-      // mainStatus update
-      mainStatus = 0;
+  if(mainStatus == 1){ // Trigger loop at time interrupt
+    // mainStatus update
+    mainStatus = 0;
 
-      position = getPosition();
-      positionFiltered = lowpass((double)position.distance_mm, fcut, filteredDataOld, dt);
-      filteredDataOld = positionFiltered;
+    position = getPosition(); // Get position
+    positionFiltered = lowpass((double)position.distance_mm, fcut, filteredDataOld, dt); // Filter the position
+    filteredDataOld = positionFiltered; // log data to use with the filter next loop
 
-      if (position.range_status == 0){ // Make sure the position sensor see the drone
-        getAccelerometer(); // Gather accelerometer data
-        pid = PID(positionFiltered); // Calculate PID
-        pwm = pidToPwm(pid); // Convert PID to motor commands
+    if (position.range_status == 0){ // Make sure the position sensor see the drone
+      getAccelerometer(); // Gather accelerometer data
+      pid = PID(positionFiltered); // Calculate PID
+      pwm = pidToPwm(pid); // Convert PID to motor commands
 
-        // Send motor commands to ESC
-        for (int i = 0; i < 4; i++){
-          ESC[i].write(pwm[i]);
-        }
-
-        // Log data
-        logData();
-
-      } else{ // If position sensor doesn't see the drone, run motors at idle
-        for (int i = 0; i < 4; i++){
-          ESC[i].write(0);
-        }
+      // Send motor commands to ESC
+      for (int i = 0; i < 4; i++){
+        ESC[i].write(pwm[i]);
       }
-    }
-  }else{
-    for (int i = 0; i < 4; i++){
-      ESC[i].write(0);
+
+      // Log data
+      logData();
+
+    }else{ // If position sensor doesn't see the drone, run motors at idle
+      for (int i = 0; i < 4; i++){
+        ESC[i].write(0);
+      }
     }
   }
 }
