@@ -33,6 +33,10 @@ double priError = 0;
 double toError = 0;
 float pid;
 
+double Pvalue;
+double Ivalue;
+double Dvalue;
+
 // Lowpass
 double filteredDataOld;  // Replace with the initial value of previously filtered data
 double positionFiltered;
@@ -83,31 +87,31 @@ VL53L4CD_Result_t getPosition(){
 }
 
 // Function that calculate PID (in Newton needed to accelerate the drone toward setpoint)
-float PID(float dis) {
+float PID(float dis, double *Pvalue, double *Ivalue, double *Dvalue) {
   float disM = (float)dis/1000;
   double error = setP - disM; 
   float PIDvalue = 0;
 
-  double Pvalue = error * kp;
-  double Ivalue = toError * ki;
-  double Dvalue = (error - priError) * kd;
+  *Pvalue = error * kp;
+  *Ivalue = toError * ki;
+  *Dvalue = (error - priError) * kd;
 
-  if(Ivalue <= -saturationI && error < 0){
-    Ivalue = -saturationI;
-  }else if (Ivalue >= saturationI && error > 0){
-    Ivalue = saturationI;
-  }else if (Ivalue <= -saturationI && error > 0){
-    Ivalue = -saturationI;
+  if(*Ivalue <= -saturationI && error < 0){
+    *Ivalue = -saturationI;
+  }else if (*Ivalue >= saturationI && error > 0){
+    *Ivalue = saturationI;
+  }else if (*Ivalue <= -saturationI && error > 0){
+    *Ivalue = -saturationI;
     toError += error;
-  }else if (Ivalue >= saturationI && error < 0){
-    Ivalue = saturationI;
+  }else if (*Ivalue >= saturationI && error < 0){
+    *Ivalue = saturationI;
     toError += error;
   }else{
     toError += error;
   }
 
-  if (fabs(error) > deadzone){
-    PIDvalue = Pvalue + Ivalue + Dvalue;
+  if (fabs(error) >= deadzone){
+    PIDvalue = *Pvalue + *Ivalue + *Dvalue;
   }else{
     PIDvalue = 0;
   }
@@ -180,11 +184,16 @@ void logData(){
   Serial.print(",");
   Serial.print(pwm[3]);
   Serial.print(",");
-  Serial.print(sox.accX);
+  //Serial.print(sox.accX);
+  //Serial.print(",");
+  //Serial.print(sox.accY);
+  //Serial.print(",");
+  //Serial.println(sox.accZ);
+  Serial.print(Pvalue);
   Serial.print(",");
-  Serial.print(sox.accY);
+  Serial.print(Ivalue);
   Serial.print(",");
-  Serial.println(sox.accZ);
+  Serial.println(Dvalue);
 }
 
 void logHeader(){ 
@@ -277,7 +286,7 @@ void loop() {
 
     if (position.range_status == 0){ // Make sure the position sensor see the drone
       getAccelerometer(); // Gather accelerometer data
-      pid = PID(positionFiltered); // Calculate PID
+      pid = PID(positionFiltered, &Pvalue, &Ivalue, &Dvalue); // Calculate PID
       pwm = pidToPwm(pid); // Convert PID to motor commands
 
       // Send motor commands to ESC
