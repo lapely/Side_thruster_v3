@@ -4,9 +4,9 @@
 // Parameters 
 
 // PID
-float kp = 30; // P gain
+float kp = 150; // P gain
 float ki = 0; // I gain
-float kd = 1; // D gain
+float kd = 5000; // D gain
 
 #define deadzone 0.05 // PID active only if out of +/- deadzone (cm) WARNING : The bigger the deadzone, the bigger the step the motor will do when it starts
 

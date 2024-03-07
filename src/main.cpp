@@ -172,7 +172,7 @@ int* pidToPwm(float pid) {
 void logData(){
   Serial.print(millis());
   Serial.print(",");
-  Serial.print((float)positionFiltered/1000-setP);
+  Serial.print(positionFiltered/1000-setP);
   Serial.print(",");
   Serial.print(pid);
   Serial.print(",");
@@ -216,7 +216,7 @@ void logHeader(){
   Serial.print(0);
   Serial.print(",");
   Serial.println(0);
-  Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)");
+  //Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)");
 }
 
 // Lowpass filter
