@@ -170,7 +170,7 @@ int* pidToPwm(float pid) {
 
 // Functions that print all relevent data in the serial monitor
 void logData(){
-  Serial.print(millis());
+  Serial.print(millis()/1000);
   Serial.print(",");
   Serial.print(positionFiltered/1000-setP);
   Serial.print(",");
@@ -282,6 +282,7 @@ void loop() {
 
     position = getPosition(); // Get position
     positionFiltered = lowpass((double)position.distance_mm, fcut, filteredDataOld, dt); // Filter the position
+    Serial.println(positionFiltered);
     filteredDataOld = positionFiltered; // log data to use with the filter next loop
 
     if (position.range_status == 0){ // Make sure the position sensor see the drone
