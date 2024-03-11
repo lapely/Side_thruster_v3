@@ -49,6 +49,8 @@ int* pwm; // Array of pwms
 hw_timer_t *mainTimer = NULL;
 bool mainStatus = 0;
 
+float timee = 0;
+
 // Function that run on time interrupt
 void IRAM_ATTR onMainTimer(){
   mainStatus = 1;
@@ -170,9 +172,9 @@ int* pidToPwm(float pid) {
 
 // Functions that print all relevent data in the serial monitor
 void logData(){
-  Serial.print(millis()/1000);
+  Serial.print(timee, 2);
   Serial.print(",");
-  Serial.print(positionFiltered/1000-setP);
+  Serial.print(positionFiltered/1000 - setP, 5);
   Serial.print(",");
   Serial.print(pid);
   Serial.print(",");
@@ -279,10 +281,10 @@ void loop() {
   if(mainStatus == 1){ // Trigger loop at time interrupt
     // mainStatus update
     mainStatus = 0;
+    timee += 0.01;
 
     position = getPosition(); // Get position
     positionFiltered = lowpass((double)position.distance_mm, fcut, filteredDataOld, dt); // Filter the position
-    Serial.println(positionFiltered);
     filteredDataOld = positionFiltered; // log data to use with the filter next loop
 
     if (position.range_status == 0){ // Make sure the position sensor see the drone
