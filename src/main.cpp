@@ -41,6 +41,9 @@ double Dvalue;
 double filteredDataOld;  // Replace with the initial value of previously filtered data
 double positionFiltered;
 
+double dFiltered;
+double dFilteredOld;
+
 // ESC
 Servo ESC[4]; // create servo object to control the ESC
 int* pwm; // Array of pwms
@@ -54,6 +57,15 @@ float timee = 0;
 // Function that run on time interrupt
 void IRAM_ATTR onMainTimer(){
   mainStatus = 1;
+}
+
+// Lowpass filter
+double lowpass(double dataInput, double fcut, double filteredDataOld, double dt) {
+
+    double alpha = dt / (1.0 / fcut + dt); // calculate alpha
+    double filteredData = (1 - alpha) * filteredDataOld + dataInput * alpha; // update value
+
+    return filteredData;
 }
 
 // Function that read accelerometer and update sensor object with new data
@@ -96,8 +108,12 @@ float PID(float dis, double *Pvalue, double *Ivalue, double *Dvalue) {
 
   *Pvalue = error * kp;
   *Ivalue = toError * ki;
-  *Dvalue = (error - priError) * kd;
 
+  double dPreGain = error - priError;
+  dFiltered = lowpass(dPreGain, fcut, dFilteredOld, dt);
+  dFilteredOld = dFiltered;
+  *Dvalue = dFiltered * kd;
+ 
   if(*Ivalue <= -saturationI && error < 0){
     *Ivalue = -saturationI;
   }else if (*Ivalue >= saturationI && error > 0){
@@ -219,15 +235,6 @@ void logHeader(){
   Serial.print(",");
   Serial.println(0);
   //Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)");
-}
-
-// Lowpass filter
-double lowpass(double dataInput, double fcut, double filteredDataOld, double dt) {
-
-    double alpha = dt / (1.0 / fcut + dt); // calculate alpha
-    double filteredData = (1 - alpha) * filteredDataOld + dataInput * alpha; // update value
-
-    return filteredData;
 }
 
 void setup() {
