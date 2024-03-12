@@ -38,7 +38,7 @@ double Ivalue;
 double Dvalue;
 
 // Lowpass
-double filteredDataOld;  // Replace with the initial value of previously filtered data
+double filteredDataOld = setP;
 double positionFiltered;
 
 double dFiltered;
@@ -279,6 +279,7 @@ void setup() {
   // Setpoint
   if (setP == 0){ // If setP is 0, set setP to initial position
     setP = (float)getPosition().distance_mm/1000;
+    filteredDataOld = setP * 1000;   // Set initial position for the position to the actual position
   }
 }
 
