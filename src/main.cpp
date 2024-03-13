@@ -37,6 +37,10 @@ double Pvalue;
 double Ivalue;
 double Dvalue;
 
+double a = 0.000098393;
+double b = -0.2099975;
+double c = 115.6317857;
+
 // Lowpass
 double filteredDataOld = setP;
 double positionFiltered;
@@ -148,10 +152,10 @@ int* pidToPwm(float pid) {
   int* result = new int[4];
   int pwm = minPwm;
 
-  if (fabs(pid) > 0.52){
-    float rpm = (50.0 / 149.0) * (833.0 + std::sqrt(-15338511.0 + 59600000.0 * (fabs(pid))/2)); // Correspond to the curve of our motor thrust in function of RPM
-    pwm = 0.0451*rpm + 986; // Correspond to the curve of our motor PWM in function of RPM
-  }
+  if (std::abs(pid) > 3.6)
+      pwm = -(b - std::sqrt(b * b - 4 * a * (c - std::abs(pid)))) / (2 * a);
+  else
+      pwm = 1100;
   
   if (pid < 0 && pwm > minPwm && pwm < maxPwm){
     result[0] = pwm;

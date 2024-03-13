@@ -4,14 +4,14 @@
 // Parameters 
 
 // PID
-float kp = 150; // P gain
+float kp = 100; // P gain
 float ki = 0; // I gain
 float kd = 5000; // D gain
 
 #define deadzone 0.01 // PID active only if out of +/- deadzone (m) WARNING : The bigger the deadzone, the bigger the step the motor will do when it starts
 
 #define pidSaturation 22 // Max PID value. In our case, 22 corresponds to the force (N) that the motors can produce for each side
-#define saturationI 0.16 // Max I value. You can see it as the number of cm that can be accumulated by the I factor for the error
+#define saturationI 10 // Max I value. You can see it as the number of cm that can be accumulated by the I factor for the error
 
 float setP = 0; // Setpoint (distance from position sensor in m) (if 0, auto setP is enabled. It means it will use initial position as setP)
 
