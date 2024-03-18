@@ -22,28 +22,39 @@ using namespace std;
 // Distance sensor
 #define DEV_I2C Wire
 VL53L4CD sensor_vl53l4cd_sat(&DEV_I2C, A1);
-VL53L4CD_Result_t position;
-uint8_t posStatus; // is 0 if position senser see something
+VL53L4CD_Result_t TOF_sensor;
+uint8_t posStatus; // is 0 if TOF_sensor senser see something
 
 // Accelero
 Adafruit_LSM6DSOX sox;
 
 // PID
+double time_ck[2] = {0, 0};
 double priError = 0;
 double toError = 0;
+float setP_v; // Velocity setpoint for second PID
 float pid;
 
-double Pvalue;
-double Ivalue;
-double Dvalue;
+double Pvalue_p;
+double Ivalue_p;
+double Dvalue_p;
+
+float velocity = 0;
+float velocityFiltered = 0;
+float oldVelocity = 0;
+
+double Pvalue_v;
+double Ivalue_v;
+double Dvalue_v;
 
 double a = 0.000098393;
 double b = -0.2099975;
 double c = 115.6317857;
 
 // Lowpass
-double filteredDataOld = setP;
+double oldPosition = setP_p;
 double positionFiltered;
+double position;
 
 double dFiltered;
 double dFilteredOld;
@@ -62,10 +73,10 @@ void IRAM_ATTR onMainTimer(){
 }
 
 // Lowpass filter
-double lowpass(double dataInput, double fcut, double filteredDataOld, double dt) {
+double lowpass(double dataInput, double fcut, double oldData, double dt) {
 
     double alpha = dt / (1.0 / fcut + dt); // calculate alpha
-    double filteredData = (1 - alpha) * filteredDataOld + dataInput * alpha; // update value
+    double filteredData = (1 - alpha) * oldData + dataInput * alpha; // update value
 
     return filteredData;
 }
@@ -79,7 +90,7 @@ void getAccelerometer(){ // TODO Essayer de ne pas déclarer les variables à ch
   sox.getEvent(&accel, &gyro, &temp);
 }
 
-// Function that read position sensor and return sensor object
+// Function that read TOF_sensor sensor and return sensor object
 VL53L4CD_Result_t getPosition(){
 // Gather distance from distance sensor
   uint8_t NewDataReady = 0;
@@ -103,16 +114,15 @@ VL53L4CD_Result_t getPosition(){
 }
 
 // Function that calculate PID (in Newton needed to accelerate the drone toward setpoint)
-float PID(float dis, double *Pvalue, double *Ivalue, double *Dvalue) {
-  float disM = (float)dis/1000;
-  double error = setP - disM; 
+float PID(float setP, float actualData, double *Pvalue, double *Ivalue, double *Dvalue, float kp, float kd, float ki, float saturationI, float pidSaturation, float deadzone, float fcut_d) {
+  double error = setP - actualData; 
   float PIDvalue = 0;
 
   *Pvalue = error * kp;
   *Ivalue = toError * ki;
 
   double dPreGain = error - priError;
-  dFiltered = lowpass(dPreGain, fcut, dFilteredOld, dt);
+  dFiltered = lowpass(dPreGain, fcut_d, dFilteredOld, dt);
   dFilteredOld = dFiltered;
   *Dvalue = dFiltered * kd;
  
@@ -192,7 +202,7 @@ int* pidToPwm(float pid) {
 void logData(){
   Serial.print((double)millis()/1000);
   Serial.print(",");
-  Serial.print(positionFiltered/1000 - setP, 5);
+  Serial.print(positionFiltered - setP_p, 5);
   Serial.print(",");
   Serial.print(pid);
   Serial.print(",");
@@ -210,33 +220,25 @@ void logData(){
   Serial.print(",");
   Serial.print(sox.accZ);
   Serial.print(",");
-  Serial.print(Pvalue);
+  Serial.print(Pvalue_p);
   Serial.print(",");
-  Serial.print(Ivalue);
+  Serial.print(Pvalue_v);
   Serial.print(",");
-  Serial.println(Dvalue);
+  Serial.print(Ivalue_v);
+  Serial.print(",");
+  Serial.println(Dvalue_v);
 }
 
 void logHeader(){ 
-  Serial.print(kp);
+  Serial.print(kp_p);
   Serial.print(",");
-  Serial.print(ki);
+  Serial.print(kp_v);
   Serial.print(",");
-  Serial.print(kd);
+  Serial.print(ki_v);
   Serial.print(",");
-  Serial.print(setP);
+  Serial.print(kd_v);
   Serial.print(",");
-  Serial.print(0);
-  Serial.print(",");
-  Serial.print(0);
-  Serial.print(",");
-  Serial.print(0);
-  Serial.print(",");
-  Serial.print(0);
-  Serial.print(",");
-  Serial.print(0);
-  Serial.print(",");
-  Serial.println(0);
+  Serial.println(setP_p);
   //Serial.println("Time (ms),Distance (mm),pid (N),pwm 1,pwm 2,pwm 3,pwm 4,acc x (m/s^2),acc y (m/s^2),acc z (m/s^2)");
 }
 
@@ -282,9 +284,9 @@ void setup() {
   timerAlarmEnable(mainTimer);
 
   // Setpoint
-  if (setP == 0){ // If setP is 0, set setP to initial position
-    setP = (float)getPosition().distance_mm/1000;
-    filteredDataOld = setP * 1000;   // Set initial position for the position to the actual position
+  if (setP_p == 0){ // If setP is 0, set setP to initial TOF_sensor
+    setP_p = (float)getPosition().distance_mm/1000;
+    oldPosition = setP_p * 1000;   // Set initial TOF_sensor for the TOF_sensor to the actual TOF_sensor
   }
 }
 
@@ -292,14 +294,19 @@ void loop() {
   if(mainStatus == 1){ // Trigger loop at time interrupt
     // mainStatus update
     mainStatus = 0;
+    time_ck[0] = (double)millis()/1000;
 
-    position = getPosition(); // Get position
-    positionFiltered = lowpass((double)position.distance_mm, fcut, filteredDataOld, dt); // Filter the position
-    filteredDataOld = positionFiltered; // log data to use with the filter next loop
+    TOF_sensor = getPosition(); // Get TOF_sensor
+    position = (double)TOF_sensor.distance_mm/1000;
+    positionFiltered = lowpass((double)position, fcut_p, oldPosition, dt); // Filter the TOF_sensor
 
-    if (position.range_status == 0){ // Make sure the position sensor see the drone
+    velocity = (positionFiltered-oldPosition)/(time_ck[1]-time_ck[0]);
+    velocityFiltered = lowpass((double)velocity, fcut_v, oldVelocity, dt); // Filter the velocity
+
+    if (TOF_sensor.range_status == 0){ // Make sure the TOF_sensor sensor see the drone
       getAccelerometer(); // Gather accelerometer data
-      pid = PID(positionFiltered, &Pvalue, &Ivalue, &Dvalue); // Calculate PID
+      setP_v = PID(setP_p, positionFiltered, &Pvalue_p, &Ivalue_p, &Dvalue_p, kp_p, kd_p, ki_p, saturationI_p, pidSaturation_p, deadzone_p, fcut_d_p); // Calculate PID on TOF_sensor (used as velocity setpoint)
+      pid = PID(setP_v, velocityFiltered, &Pvalue_v, &Ivalue_v, &Dvalue_v, kp_v, kd_v, ki_v, saturationI_v, pidSaturation_v, deadzone_v, fcut_d_v); // Calculate PID on velocity
       pwm = pidToPwm(pid); // Convert PID to motor commands
 
       // Send motor commands to ESC
@@ -310,7 +317,11 @@ void loop() {
       // Log data
       logData();
 
-    }else{ // If position sensor doesn't see the drone, run motors at idle
+      oldPosition = positionFiltered; // log old position
+      oldVelocity = velocityFiltered; // log old velocity
+      time_ck[1] = time_ck[0]; // log old velocity
+
+    }else{ // If TOF sensor doesn't see the drone, run motors at idle
       for (int i = 0; i < 4; i++){
         ESC[i].write(0);
       }
