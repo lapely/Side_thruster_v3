@@ -190,7 +190,7 @@ int* pidToPwm(float pid) {
 
 // Functions that print all relevent data in the serial monitor
 void logData(){
-  Serial.print((double)millis());
+  Serial.print((double)millis()/1000);
   Serial.print(",");
   Serial.print(positionFiltered/1000 - setP, 5);
   Serial.print(",");
@@ -204,11 +204,12 @@ void logData(){
   Serial.print(",");
   Serial.print(pwm[3]);
   Serial.print(",");
-  //Serial.print(sox.accX);
-  //Serial.print(",");
-  //Serial.print(sox.accY);
-  //Serial.print(",");
-  //Serial.println(sox.accZ);
+  Serial.print(sox.accX);
+  Serial.print(",");
+  Serial.print(sox.accY);
+  Serial.print(",");
+  Serial.print(sox.accZ);
+  Serial.print(",");
   Serial.print(Pvalue);
   Serial.print(",");
   Serial.print(Ivalue);

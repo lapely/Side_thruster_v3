@@ -6,7 +6,7 @@
 // PID
 float kp = 100; // P gain
 float ki = 0; // I gain
-float kd = 5000; // D gain
+float kd = 0; // D gain
 
 #define deadzone 0.01 // PID active only if out of +/- deadzone (m) WARNING : The bigger the deadzone, the bigger the step the motor will do when it starts
 
