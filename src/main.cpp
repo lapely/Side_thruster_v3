@@ -30,8 +30,10 @@ Adafruit_LSM6DSOX sox;
 
 // PID
 double time_ck[2] = {0, 0};
-double priError = 0;
-double toError = 0;
+double priError_p = 0;
+double priError_v = 0;
+double toError_p = 0;
+double toError_v = 0;
 float setP_v; // Velocity setpoint for second PID
 float pid;
 
@@ -114,16 +116,22 @@ VL53L4CD_Result_t getPosition(){
 }
 
 // Function that calculate PID (in Newton needed to accelerate the drone toward setpoint)
-float PID(float setP, float actualData, double *Pvalue, double *Ivalue, double *Dvalue, float kp, float kd, float ki, float saturationI, float pidSaturation, float deadzone, float fcut_d) {
+float PID(float setP, float actualData, double *Pvalue, double *Ivalue, double *Dvalue, float kp, float kd, float ki, float saturationI, float pidSaturation, float deadzone, float fcut_d, double *priError, double *toError) {
   double error = setP - actualData; 
   float PIDvalue = 0;
 
   *Pvalue = error * kp;
-  *Ivalue = toError * ki;
+  *Ivalue = *toError * ki;
 
-  double dPreGain = error - priError;
-  dFiltered = lowpass(dPreGain, fcut_d, dFilteredOld, dt);
-  dFilteredOld = dFiltered;
+  double dPreGain = error - *priError;
+
+  if (kd != 0){
+    dFiltered = lowpass(dPreGain, fcut_d, dFilteredOld, dt);
+    dFilteredOld = dFiltered;
+  } else{
+    dFiltered = dPreGain;
+  }
+  
   *Dvalue = dFiltered * kd;
  
   if(*Ivalue <= -saturationI && error < 0){
@@ -132,12 +140,12 @@ float PID(float setP, float actualData, double *Pvalue, double *Ivalue, double *
     *Ivalue = saturationI;
   }else if (*Ivalue <= -saturationI && error > 0){
     *Ivalue = -saturationI;
-    toError += error;
+    *toError += error;
   }else if (*Ivalue >= saturationI && error < 0){
     *Ivalue = saturationI;
-    toError += error;
+    *toError += error;
   }else{
-    toError += error;
+    *toError += error;
   }
 
   if (fabs(error) >= deadzone){
@@ -146,7 +154,7 @@ float PID(float setP, float actualData, double *Pvalue, double *Ivalue, double *
     PIDvalue = 0;
   }
 
-  priError = error;
+  *priError = error;
 
   if(PIDvalue < -pidSaturation){
     PIDvalue = -pidSaturation;
@@ -222,11 +230,14 @@ void logData(){
   Serial.print(",");
   Serial.print(Pvalue_p);
   Serial.print(",");
+  Serial.print(velocityFiltered);
+  Serial.print(",");
   Serial.print(Pvalue_v);
   Serial.print(",");
   Serial.print(Ivalue_v);
   Serial.print(",");
-  Serial.println(Dvalue_v);
+  Serial.print(Dvalue_v);
+  Serial.print("\n");
 }
 
 void logHeader(){ 
@@ -300,18 +311,20 @@ void loop() {
     position = (double)TOF_sensor.distance_mm/1000;
     positionFiltered = lowpass((double)position, fcut_p, oldPosition, dt); // Filter the TOF_sensor
 
-    velocity = (positionFiltered-oldPosition)/(time_ck[1]-time_ck[0]);
+    velocity = (positionFiltered-oldPosition)/(time_ck[0]-time_ck[1]);
     velocityFiltered = lowpass((double)velocity, fcut_v, oldVelocity, dt); // Filter the velocity
 
     if (TOF_sensor.range_status == 0){ // Make sure the TOF_sensor sensor see the drone
       getAccelerometer(); // Gather accelerometer data
-      setP_v = PID(setP_p, positionFiltered, &Pvalue_p, &Ivalue_p, &Dvalue_p, kp_p, kd_p, ki_p, saturationI_p, pidSaturation_p, deadzone_p, fcut_d_p); // Calculate PID on TOF_sensor (used as velocity setpoint)
-      pid = PID(setP_v, velocityFiltered, &Pvalue_v, &Ivalue_v, &Dvalue_v, kp_v, kd_v, ki_v, saturationI_v, pidSaturation_v, deadzone_v, fcut_d_v); // Calculate PID on velocity
+      setP_v = PID(setP_p, positionFiltered, &Pvalue_p, &Ivalue_p, &Dvalue_p, kp_p, kd_p, ki_p, saturationI_p, pidSaturation_p, deadzone_p, fcut_d_p, &priError_p, &toError_p); // Calculate PID on TOF_sensor (used as velocity setpoint)
+      pid = PID(setP_v, velocityFiltered, &Pvalue_v, &Ivalue_v, &Dvalue_v, kp_v, kd_v, ki_v, saturationI_v, pidSaturation_v, deadzone_v, fcut_d_v, &priError_v, &toError_v); // Calculate PID on velocity
       pwm = pidToPwm(pid); // Convert PID to motor commands
 
-      // Send motor commands to ESC
-      for (int i = 0; i < 4; i++){
-        ESC[i].write(pwm[i]);
+      if((double)millis()/1000 > 5){
+        // Send motor commands to ESC
+        for (int i = 0; i < 4; i++){
+          ESC[i].write(pwm[i]);
+        }
       }
 
       // Log data
